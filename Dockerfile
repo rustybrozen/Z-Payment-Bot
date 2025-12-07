@@ -12,7 +12,6 @@ RUN npm install
 COPY . .
 
 # Mở port 3000
-EXPOSE 3000
-
+EXPOSE 8495
 # Lệnh chạy bot
 CMD ["node", "bot.js"]
