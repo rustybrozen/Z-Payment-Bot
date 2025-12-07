@@ -1,4 +1,5 @@
 require('dotenv').config();
+const fs = require('fs');
 const TelegramBot = require('node-telegram-bot-api');
 const express = require('express');
 const bodyParser = require('body-parser');
@@ -37,8 +38,14 @@ function getCleanMonthKey() {
 }
 
 (async () => {
+  
+    if (!fs.existsSync('./data')) {
+        fs.mkdirSync('./data');
+    }
+
+
     db = await open({
-        filename: './database.sqlite',
+        filename: './data/database.sqlite', 
         driver: sqlite3.Database
     });
 
