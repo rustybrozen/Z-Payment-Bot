@@ -63,10 +63,15 @@ function getCleanMonthKey() {
             month_key TEXT,
             status TEXT DEFAULT 'unpaid',
             transaction_code TEXT,
+            amount_paid INTEGER DEFAULT 0,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY (user_id, month_key)
         );
     `);
+
+    try {
+        await db.run("ALTER TABLE payments ADD COLUMN amount_paid INTEGER DEFAULT 0");
+    } catch (e) {}
 
     const configDay = await db.get("SELECT value FROM config WHERE key = 'payment_day'");
     if (!configDay) {
@@ -125,19 +130,25 @@ app.post('/sw', async (req, res) => {
             if (payment.transaction_code && content.includes(payment.transaction_code.toLowerCase())) {
                 
                 const user = await db.get("SELECT name FROM users WHERE id = ?", [payment.user_id]);
+                
+                const currentPaid = payment.amount_paid || 0;
+                const newTotalPaid = currentPaid + incomingAmount;
+                const remaining = requiredAmount - newTotalPaid;
 
-                if (incomingAmount >= requiredAmount) {
-                    await db.run("UPDATE payments SET status = 'paid', updated_at = CURRENT_TIMESTAMP WHERE user_id = ? AND month_key = ?", [payment.user_id, payment.month_key]);
+                if (newTotalPaid >= requiredAmount) {
+                    await db.run("UPDATE payments SET status = 'paid', amount_paid = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ? AND month_key = ?", [newTotalPaid, payment.user_id, payment.month_key]);
                     
-                    const successMsg = `XÁC NHẬN THANH TOÁN THÀNH CÔNG ✅\n\nTháng: ${payment.month_key}\nSố tiền: ${incomingAmount} VNĐ\n\nCảm ơn bạn đã thanh toán! 😘`;
+                    const successMsg = `XÁC NHẬN THANH TOÁN THÀNH CÔNG ✅\n\nTháng: ${payment.month_key}\nĐã nhận: ${newTotalPaid} VNĐ\n\nCảm ơn đã thanh toán! 😘`;
                     await bot.sendMessage(payment.user_id, successMsg);
-                    await bot.sendMessage(ADMIN_ID, `[SEPAY] 💰 Đã nhận ${incomingAmount}đ từ ${user ? user.name : payment.user_id} (${payment.month_key})`);
+                    await bot.sendMessage(ADMIN_ID, `[SEPAY] 💰 User ${user ? user.name : payment.user_id} đã đóng ĐỦ tiền (${newTotalPaid}đ) - Tháng ${payment.month_key}`);
                     
                     await checkCompletionAndNotify(payment.month_key);
                 } else {
-                    const failMsg = `❌ CẢNH BÁO: CHUYỂN THIẾU TIỀN!\n\nBạn vừa chuyển: ${incomingAmount} VNĐ\nSố tiền quy định: ${requiredAmount} VNĐ\n\nVui lòng chuyển nốt số tiền còn thiếu hoặc liên hệ Admin.`;
+                    await db.run("UPDATE payments SET amount_paid = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ? AND month_key = ?", [newTotalPaid, payment.user_id, payment.month_key]);
+
+                    const failMsg = `⚠️ THÔNG BÁO CỘNG DỒN:\n\nHệ thống vừa nhận: ${incomingAmount} VNĐ\nTổng đã đóng: ${newTotalPaid} VNĐ\nSố tiền cần đóng: ${requiredAmount} VNĐ\n\n🔴 Còn thiếu: ${remaining} VNĐ\nVui lòng chuyển nốt số còn lại nhé!`;
                     await bot.sendMessage(payment.user_id, failMsg);
-                    await bot.sendMessage(ADMIN_ID, `⚠️ [SEPAY] User ${user ? user.name : payment.user_id} chuyển thiếu tiền!\nNhận: ${incomingAmount}\nCần: ${requiredAmount}`);
+                    await bot.sendMessage(ADMIN_ID, `⚠️ [SEPAY] User ${user ? user.name : payment.user_id} đóng thiếu.\nTổng đã đóng: ${newTotalPaid}\nCòn thiếu: ${remaining}`);
                 }
 
                 return res.json({ success: true });
@@ -158,8 +169,8 @@ async function initMonthlyPayments() {
     
     for (const user of users) {
         await db.run(`
-            INSERT OR IGNORE INTO payments (user_id, month_key, status) 
-            VALUES (?, ?, 'unpaid')
+            INSERT OR IGNORE INTO payments (user_id, month_key, status, amount_paid) 
+            VALUES (?, ?, 'unpaid', 0)
         `, [user.id, monthKey]);
     }
 }
@@ -177,7 +188,7 @@ async function sendBillToPendingUsers() {
     const currentAmount = configAmt ? configAmt.value : '30000';
 
     const unpaidUsers = await db.all(`
-        SELECT u.id, u.name 
+        SELECT u.id, u.name, p.amount_paid 
         FROM users u 
         JOIN payments p ON u.id = p.user_id 
         WHERE p.month_key = ? AND p.status = 'unpaid' AND u.status = 'active'
@@ -190,18 +201,26 @@ async function sendBillToPendingUsers() {
 
         const shortId = user.id.length > 6 ? user.id.slice(-6) : user.id;
         const transactionCode = `YTPF${cleanMonthKey}${shortId}`;
+        const paidSoFar = user.amount_paid || 0;
+        const remaining = parseInt(currentAmount) - paidSoFar;
         
         await db.run("UPDATE payments SET transaction_code = ? WHERE user_id = ? AND month_key = ?", [transactionCode, user.id, monthKey]);
 
-        const dynamicQrUrl = `https://img.vietqr.io/image/${BANK_ID}-${ACCOUNT_NO}-compact2.jpg?amount=${currentAmount}&addInfo=${transactionCode}&accountName=${ACCOUNT_NAME}`;
+        const dynamicQrUrl = `https://img.vietqr.io/image/${BANK_ID}-${ACCOUNT_NO}-compact2.jpg?amount=${remaining}&addInfo=${transactionCode}&accountName=${ACCOUNT_NAME}`;
 
         try {
             await bot.sendPhoto(user.id, dynamicQrUrl);
-            await bot.sendMessage(user.id, `🔔 QUÉT MÃ QR TRÊN ĐỂ THANH TOÁN, HOẶC COPY THÔNG TIN DƯỚI ĐÂY 👇\n(Thanh toán premium tháng ${monthStr} / ${yearStr})`);
+            let msg = `🔔 QUÉT MÃ QR TRÊN ĐỂ THANH TOÁN, HOẶC COPY THÔNG TIN DƯỚI ĐÂY 👇\n(Thanh toán premium tháng ${monthStr} / ${yearStr})`;
+            
+            if (paidSoFar > 0) {
+                msg += `\n\nℹ️ Bạn đã đóng trước: ${paidSoFar}đ\n🔴 Số tiền còn lại phải đóng: ${remaining}đ`;
+            }
+
+            await bot.sendMessage(user.id, msg);
             await bot.sendMessage(user.id, "Ngân hàng: Ngân Hàng Quân Đội MBBank");
             await bot.sendMessage(user.id, `${ACCOUNT_NO}`);
-            await bot.sendMessage(user.id,`${currentAmount}`);
-            await bot.sendMessage(user.id, `${transactionCode}`);
+            await bot.sendMessage(user.id, `${ACCOUNT_NO}`);
+            await bot.sendMessage(user.id, `Số tiền: ${remaining} đồng`);
         } catch (error) {
             console.error(`Lỗi gửi cho ${user.name}: ${error.message}`);
         }
@@ -215,7 +234,7 @@ async function sendDailyReportToAdmin() {
 
     try {
         const list = await db.all(`
-            SELECT u.name, u.id, p.status 
+            SELECT u.name, u.id, p.status, p.amount_paid 
             FROM users u 
             LEFT JOIN payments p ON u.id = p.user_id 
             WHERE u.status = 'active' AND p.month_key = ?
@@ -227,7 +246,7 @@ async function sendDailyReportToAdmin() {
         list.forEach((row, index) => {
             const isPaid = row.status === 'paid';
             if (isPaid) paidCount++;
-            const statusIcon = isPaid ? "✅ ĐÃ ĐÓNG" : "❌ CHƯA ĐÓNG";
+            const statusIcon = isPaid ? "✅ ĐÃ ĐÓNG" : `❌ CHƯA ĐÓNG (Đã nộp: ${row.amount_paid || 0}đ)`;
             
             details += `${index + 1}. ${row.name}\n   ID: ${row.id}\n   Tình trạng: ${statusIcon}\n\n`;
         });
@@ -333,7 +352,10 @@ bot.onText(/\/dathanhtoan (.+)/, async (msg, match) => {
     const monthKey = getCurrentMonthKey();
 
     try {
-        await db.run("INSERT OR REPLACE INTO payments (user_id, month_key, status) VALUES (?, ?, 'paid')", [targetId, monthKey]);
+        const configAmt = await db.get("SELECT value FROM config WHERE key = 'amount'");
+        const currentAmount = configAmt ? configAmt.value : '30000';
+
+        await db.run("INSERT OR REPLACE INTO payments (user_id, month_key, status, amount_paid) VALUES (?, ?, 'paid', ?)", [targetId, monthKey, currentAmount]);
         bot.sendMessage(ADMIN_ID, `✅ Đã set thủ công trạng thái ĐÃ ĐÓNG cho ID: ${targetId}`);
         bot.sendMessage(targetId, `✅ Admin xác nhận bạn đã đóng tiền tháng ${monthKey}.`);
         await checkCompletionAndNotify(monthKey);
@@ -347,10 +369,13 @@ bot.onText(/\/skipthangnay/, async (msg) => {
     const monthKey = getCurrentMonthKey();
     
     try {
+        const configAmt = await db.get("SELECT value FROM config WHERE key = 'amount'");
+        const currentAmount = configAmt ? configAmt.value : '30000';
+
         const users = await db.all("SELECT id FROM users WHERE status = 'active'");
         let count = 0;
         for (const user of users) {
-            await db.run("INSERT OR REPLACE INTO payments (user_id, month_key, status) VALUES (?, ?, 'paid')", [user.id, monthKey]);
+            await db.run("INSERT OR REPLACE INTO payments (user_id, month_key, status, amount_paid) VALUES (?, ?, 'paid', ?)", [user.id, monthKey, currentAmount]);
             count++;
         }
         bot.sendMessage(ADMIN_ID, `⏩ Đã SKIP tháng ${monthKey}. Đã set ${count} thành viên thành ĐÃ ĐÓNG.`);
