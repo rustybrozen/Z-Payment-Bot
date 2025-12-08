@@ -138,7 +138,7 @@ app.post('/sw', async (req, res) => {
                 if (newTotalPaid >= requiredAmount) {
                     await db.run("UPDATE payments SET status = 'paid', amount_paid = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ? AND month_key = ?", [newTotalPaid, payment.user_id, payment.month_key]);
                     
-                    const successMsg = `XÁC NHẬN THANH TOÁN THÀNH CÔNG ✅\n\nTháng: ${payment.month_key}\nĐã nhận: ${newTotalPaid} VNĐ\n\nCảm ơn đã thanh toán! 😘`;
+                    const successMsg = `XÁC NHẬN THANH TOÁN THÀNH CÔNG ✅\n\nTháng: ${payment.month_key}\nĐã nhận: ${newTotalPaid} VNĐ\n\nCảm ơn bạn đã thanh toán! 😘`;
                     await bot.sendMessage(payment.user_id, successMsg);
                     await bot.sendMessage(ADMIN_ID, `[SEPAY] 💰 User ${user ? user.name : payment.user_id} đã đóng ĐỦ tiền (${newTotalPaid}đ) - Tháng ${payment.month_key}`);
                     
@@ -311,8 +311,31 @@ bot.onText(/\/dangky(.*)/, async (msg, match) => {
     }
 });
 
-bot.onText(/\/huy/, async (msg) => {
+bot.onText(/\/huy(?:\s+(.+))?/, async (msg, match) => {
     const userId = String(msg.chat.id);
+    const targetId = match[1] ? match[1].trim() : null;
+
+    if (userId === ADMIN_ID && targetId) {
+        try {
+            const user = await db.get('SELECT * FROM users WHERE id = ?', [targetId]);
+            if (!user) {
+                bot.sendMessage(ADMIN_ID, `❌ Không tìm thấy User ID: ${targetId}`);
+                return;
+            }
+            await db.run('DELETE FROM users WHERE id = ?', [targetId]);
+            await db.run('DELETE FROM payments WHERE user_id = ?', [targetId]);
+            bot.sendMessage(ADMIN_ID, `✅ Đã xóa thành công thành viên: ${user.name} (${targetId})`);
+        } catch (e) {
+            bot.sendMessage(ADMIN_ID, "❌ Lỗi database.");
+        }
+        return;
+    }
+
+    if (userId === ADMIN_ID && !targetId) {
+         bot.sendMessage(ADMIN_ID, "⚠️ Admin dùng lệnh: /huy <ID người dùng> để xóa thành viên.");
+         return;
+    }
+
     try {
         const user = await db.get('SELECT * FROM users WHERE id = ?', [userId]);
         if (!user) {
@@ -401,7 +424,6 @@ bot.onText(/\/config/, async (msg) => {
     
     const day = await db.get("SELECT value FROM config WHERE key = 'payment_day'");
     const amt = await db.get("SELECT value FROM config WHERE key = 'amount'");
-
     const users = await db.get("SELECT count(*) as count FROM users WHERE status = 'active'");
     
     const info = `⚙️ CẤU HÌNH HỆ THỐNG:\n
@@ -461,6 +483,7 @@ bot.onText(/\/help/, (msg) => {
     if (userId === ADMIN_ID) {
         bot.sendMessage(userId, `🛠️ MENU ADMIN:
 /xacnhan <ID> : Duyệt User
+/huy <ID> : Xóa thành viên
 /tinhtrang : Xem báo cáo chi tiết
 /dathanhtoan <ID> : Set đã đóng tay
 /nhantin <ID> <ND> : Nhắn riêng
