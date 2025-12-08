@@ -210,7 +210,7 @@ async function sendBillToPendingUsers() {
 
         try {
             await bot.sendPhoto(user.id, dynamicQrUrl);
-            let msg = `🔔 QUÉT MÃ QR TRÊN ĐỂ THANH TOÁN, HOẶC COPY THÔNG TIN DƯỚI ĐÂY 👇\n(Thanh toán premium tháng ${monthStr} / ${yearStr})`;
+            let msg = `🔔 QUÉT MÃ QR TRÊN ĐỂ THANH TOÁN, HOẶC COPY THÔNG TIN DƯỚI ĐÂY 👇\n(Thanh toán premium tháng ${monthStr} / ${yearStr}) - (LƯU Ý: BẮT BUỘC PHẢI CHUYỂN ĐÚNG THÔNG TIN NHƯ Ở DƯỚI)`;
             
             if (paidSoFar > 0) {
                 msg += `\n\nℹ️ Bạn đã đóng trước: ${paidSoFar}đ\n🔴 Số tiền còn lại phải đóng: ${remaining}đ`;
@@ -218,9 +218,12 @@ async function sendBillToPendingUsers() {
 
             await bot.sendMessage(user.id, msg);
             await bot.sendMessage(user.id, "Ngân hàng: Ngân Hàng Quân Đội MBBank");
+            await bot.sendMessage(user.id, "Số tài khoản: 👇");
             await bot.sendMessage(user.id, `${ACCOUNT_NO}`);
-            await bot.sendMessage(user.id, `${ACCOUNT_NO}`);
-            await bot.sendMessage(user.id, `Số tiền: ${remaining} đồng`);
+            await bot.sendMessage(user.id, "Nội dung: 👇");
+            await bot.sendMessage(user.id, `${transactionCode}`);
+            await bot.sendMessage(user.id, `Số tiền (Đồng): 👇`);
+            await bot.sendMessage(user.id, `${remaining}`);
         } catch (error) {
             console.error(`Lỗi gửi cho ${user.name}: ${error.message}`);
         }
@@ -398,6 +401,7 @@ bot.onText(/\/config/, async (msg) => {
     
     const day = await db.get("SELECT value FROM config WHERE key = 'payment_day'");
     const amt = await db.get("SELECT value FROM config WHERE key = 'amount'");
+
     const users = await db.get("SELECT count(*) as count FROM users WHERE status = 'active'");
     
     const info = `⚙️ CẤU HÌNH HỆ THỐNG:\n
