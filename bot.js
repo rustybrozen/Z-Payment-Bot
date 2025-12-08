@@ -114,22 +114,31 @@ app.post('/sw', async (req, res) => {
         if (data.transferType !== 'in') return res.json({ success: true });
 
         const content = data.content.toLowerCase();
-        const amount = data.transferAmount;
+        const incomingAmount = parseInt(data.transferAmount);
 
         const pendingPayments = await db.all("SELECT * FROM payments WHERE status = 'unpaid'");
+        
+        const configAmt = await db.get("SELECT value FROM config WHERE key = 'amount'");
+        const requiredAmount = parseInt(configAmt ? configAmt.value : (process.env.DEFAULT_AMOUNT || '30000'));
 
         for (const payment of pendingPayments) {
             if (payment.transaction_code && content.includes(payment.transaction_code.toLowerCase())) {
                 
-                await db.run("UPDATE payments SET status = 'paid', updated_at = CURRENT_TIMESTAMP WHERE user_id = ? AND month_key = ?", [payment.user_id, payment.month_key]);
-                
                 const user = await db.get("SELECT name FROM users WHERE id = ?", [payment.user_id]);
-                
-                const successMsg = `XÁC NHẬN THANH TOÁN THÀNH CÔNG ✅\n\nTháng: ${payment.month_key}\nSố tiền: ${amount} VNĐ\n\nCảm ơn bạn đã thanh toán! 😘`;
-                await bot.sendMessage(payment.user_id, successMsg);
-                await bot.sendMessage(ADMIN_ID, `[SEPAY] 💰 Đã nhận ${amount}đ từ ${user ? user.name : payment.user_id} (${payment.month_key})`);
-                
-                await checkCompletionAndNotify(payment.month_key);
+
+                if (incomingAmount >= requiredAmount) {
+                    await db.run("UPDATE payments SET status = 'paid', updated_at = CURRENT_TIMESTAMP WHERE user_id = ? AND month_key = ?", [payment.user_id, payment.month_key]);
+                    
+                    const successMsg = `XÁC NHẬN THANH TOÁN THÀNH CÔNG ✅\n\nTháng: ${payment.month_key}\nSố tiền: ${incomingAmount} VNĐ\n\nCảm ơn bạn đã thanh toán! 😘`;
+                    await bot.sendMessage(payment.user_id, successMsg);
+                    await bot.sendMessage(ADMIN_ID, `[SEPAY] 💰 Đã nhận ${incomingAmount}đ từ ${user ? user.name : payment.user_id} (${payment.month_key})`);
+                    
+                    await checkCompletionAndNotify(payment.month_key);
+                } else {
+                    const failMsg = `❌ CẢNH BÁO: CHUYỂN THIẾU TIỀN!\n\nBạn vừa chuyển: ${incomingAmount} VNĐ\nSố tiền quy định: ${requiredAmount} VNĐ\n\nVui lòng chuyển nốt số tiền còn thiếu hoặc liên hệ Admin.`;
+                    await bot.sendMessage(payment.user_id, failMsg);
+                    await bot.sendMessage(ADMIN_ID, `⚠️ [SEPAY] User ${user ? user.name : payment.user_id} chuyển thiếu tiền!\nNhận: ${incomingAmount}\nCần: ${requiredAmount}`);
+                }
 
                 return res.json({ success: true });
             }
@@ -191,6 +200,7 @@ async function sendBillToPendingUsers() {
             await bot.sendMessage(user.id, `🔔 QUÉT MÃ QR TRÊN ĐỂ THANH TOÁN, HOẶC COPY THÔNG TIN DƯỚI ĐÂY 👇\n(Thanh toán premium tháng ${monthStr} / ${yearStr})`);
             await bot.sendMessage(user.id, "Ngân hàng: Ngân Hàng Quân Đội MBBank");
             await bot.sendMessage(user.id, `${ACCOUNT_NO}`);
+            await bot.sendMessage(user.id,`${currentAmount}`);
             await bot.sendMessage(user.id, `${transactionCode}`);
         } catch (error) {
             console.error(`Lỗi gửi cho ${user.name}: ${error.message}`);
