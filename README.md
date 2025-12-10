@@ -1,8 +1,5 @@
-# Zalo Bot - Quản lý thu tiền YouTube Premium tự động
+# Zalo Bot - Quản lý thu tiền  tự động
 
-Con bot này được viết ra để giải phóng sức lao động cho các chủ hụi YouTube Premium (hoặc Netflix, Spotify...). Thay vì đến tháng phải đi nhắn tin đòi tiền từng người, check sao kê ngân hàng bằng mắt, thì bot này sẽ lo hết từ A đến Z.
-
-Cơ chế hoạt động: Bot chạy trên Zalo (thông qua Zapps), Database dùng SQLite gọn nhẹ, tích hợp SePay để tự động xác nhận giao dịch ngân hàng.
 
 ## Tính năng chính
 
