@@ -5,7 +5,7 @@
 
 - Tự động gửi mã QR thanh toán (động) cho từng thành viên khi đến ngày thu tiền.
 - Mã QR có chứa nội dung chuyển khoản riêng biệt để định danh người dùng.
-- Tự động quét giao dịch ngân hàng qua Webhook.
+- Tự động quét giao dịch ngân hàng
 - Tự động cập nhật trạng thái "Đã đóng tiền" khi nhận được tiền.
 - Báo cáo tiến độ thu tiền hàng ngày cho Admin.
 - Nhắc nợ tự động mỗi sáng nếu chưa đóng tiền.
