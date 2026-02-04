@@ -99,7 +99,7 @@ async function checkCompletionAndNotify(monthKey) {
         const totalPaid = await db.get("SELECT count(*) as count FROM payments WHERE month_key = ? AND status = 'paid'", [monthKey]);
 
         if (totalActive.count > 0 && totalPaid.count === totalActive.count) {
-            bot.sendMessage(ADMIN_ID, `🎉 TẤT CẢ THÀNH VIÊN ĐÃ ĐÓNG ĐỦ TIỀN THÁNG ${monthKey} RỒI NHÉ! 🚀`);
+            bot.sendMessage(ADMIN_ID, `🎉 TẤT CẢ THÀNH VIÊN ĐÃ ĐÓNG ĐỦ TIỀN THÁNG ${monthKey}!`);
         }
     } catch (e) {
         console.error(e);
@@ -138,9 +138,9 @@ app.post('/sw', async (req, res) => {
                 if (newTotalPaid >= requiredAmount) {
                     await db.run("UPDATE payments SET status = 'paid', amount_paid = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ? AND month_key = ?", [newTotalPaid, payment.user_id, payment.month_key]);
                     
-                    const successMsg = `XÁC NHẬN THANH TOÁN THÀNH CÔNG ✅\n\nTháng: ${payment.month_key}\nĐã nhận: ${newTotalPaid} VNĐ\n\nCảm ơn bạn đã thanh toán! 😘`;
+                    const successMsg = `XÁC NHẬN THANH TOÁN THÀNH CÔNG ✅\n\nTháng: ${payment.month_key}\nĐã nhận: ${newTotalPaid} VNĐ\n\nCảm ơn bạn đã thanh toán!`;
                     await bot.sendMessage(payment.user_id, successMsg);
-                    await bot.sendMessage(ADMIN_ID, `[SEPAY] 💰 User ${user ? user.name : payment.user_id} đã đóng ĐỦ tiền (${newTotalPaid}đ) - Tháng ${payment.month_key}`);
+                    await bot.sendMessage(ADMIN_ID, `💰 User ${user ? user.name : payment.user_id} đã đóng ĐỦ tiền (${newTotalPaid}đ) - Tháng ${payment.month_key}`);
                     
                     await checkCompletionAndNotify(payment.month_key);
                 } else {
@@ -148,7 +148,7 @@ app.post('/sw', async (req, res) => {
 
                     const failMsg = `⚠️ THÔNG BÁO CỘNG DỒN:\n\nHệ thống vừa nhận: ${incomingAmount} VNĐ\nTổng đã đóng: ${newTotalPaid} VNĐ\nSố tiền cần đóng: ${requiredAmount} VNĐ\n\n🔴 Còn thiếu: ${remaining} VNĐ\nVui lòng chuyển nốt số còn lại nhé!`;
                     await bot.sendMessage(payment.user_id, failMsg);
-                    await bot.sendMessage(ADMIN_ID, `⚠️ [SEPAY] User ${user ? user.name : payment.user_id} đóng thiếu.\nTổng đã đóng: ${newTotalPaid}\nCòn thiếu: ${remaining}`);
+                    await bot.sendMessage(ADMIN_ID, `⚠️ User ${user ? user.name : payment.user_id} đóng thiếu.\nTổng đã đóng: ${newTotalPaid}\nCòn thiếu: ${remaining}`);
                 }
 
                 return res.json({ success: true });
@@ -254,15 +254,16 @@ async function sendDailyReportToAdmin() {
             details += `${index + 1}. ${row.name}\n   ID: ${row.id}\n   Tình trạng: ${statusIcon}\n\n`;
         });
 
-        const today = new Date().toLocaleDateString('vi-VN');
 
+        if (paidCount === list.length && list.length > 0) {
+            return; 
+        }
+
+        const today = new Date().toLocaleDateString('vi-VN');
         const report = `📅 BÁO CÁO THU PHÍ NGÀY ${today}\n\n📊 Tháng: ${monthKey}\n💰 Tiến độ: ${paidCount}/${list.length} người đã đóng.\n\n📋 CHI TIẾT THÀNH VIÊN:\n\n${details}`;
         
         bot.sendMessage(ADMIN_ID, report);
 
-        if (paidCount === list.length && list.length > 0) {
-            bot.sendMessage(ADMIN_ID, "🎉 CHÚC MỪNG! ĐÃ HOÀN THÀNH THU PHÍ THÁNG NÀY.");
-        }
 
     } catch (e) {
         console.error("Lỗi gửi báo cáo:", e);
@@ -279,7 +280,7 @@ async function broadcastMessage(messageContent) {
         } catch (error) {}
         await new Promise(r => setTimeout(r, 500));
     }
-    bot.sendMessage(ADMIN_ID, `✅ Đã gửi thông báo thành công cho ${count} thành viên.`);
+    bot.sendMessage(ADMIN_ID, `Đã gửi thông báo thành công cho ${count} thành viên.`);
 }
 
 bot.onText(/\/dangky(.*)/, async (msg, match) => {
@@ -357,7 +358,7 @@ bot.onText(/\/xacnhan (.+)/, async (msg, match) => {
         const result = await db.run("UPDATE users SET status = 'active' WHERE id = ?", [targetId]);
         if (result.changes > 0) {
             bot.sendMessage(ADMIN_ID, `✅ Đã duyệt thành công ID: ${targetId}`);
-            bot.sendMessage(targetId, "🎉 Tài khoản đã được duyệt! Chào mừng bạn.");
+            bot.sendMessage(targetId, "🎉 Tài khoản đã được duyệt!.");
             await initMonthlyPayments();
         } else {
             bot.sendMessage(ADMIN_ID, "❌ Không tìm thấy ID này.");
