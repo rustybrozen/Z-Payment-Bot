@@ -249,7 +249,7 @@ async function sendDailyReportToAdmin() {
         list.forEach((row, index) => {
             const isPaid = row.status === 'paid';
             if (isPaid) paidCount++;
-            const statusIcon = isPaid ? "✅ ĐÃ ĐÓNG" : `❌ CHƯA ĐÓNG (Đã nộp: ${row.amount_paid || 0}đ)`;
+            const statusIcon = isPaid ? "✅" : `❌ (Đã nộp: ${row.amount_paid || 0}đ)`;
             
             details += `${index + 1}. ${row.name}\n   ID: ${row.id}\n   Tình trạng: ${statusIcon}\n\n`;
         });
