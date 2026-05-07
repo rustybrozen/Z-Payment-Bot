@@ -518,11 +518,9 @@ bot.onText(/\/help/, (msg) => {
 
 bot.onText(/\/test/, async (msg) => {
     const userId = String(msg.chat.id);
-    
-    // Khóa mõm người lạ, chỉ Admin (bro) mới được xài lệnh này
     if (userId !== ADMIN_ID) return;
 
-    bot.sendMessage(userId, "🛠️ Đang giả lập quá trình gửi bill test cho Admin...");
+    bot.sendMessage(userId, "🛠️ Đang bật Super Debug... Check terminal/log trên Coolify ngay nhé!");
 
     const cleanMonthKey = getCleanMonthKey();
     const d = new Date();
@@ -535,20 +533,51 @@ bot.onText(/\/test/, async (msg) => {
         const remaining = parseInt(currentAmount);
         
         const transactionCode = `YTPF${cleanMonthKey}TEST`;
-
         const encodedAccountName = encodeURIComponent(ACCOUNT_NAME);
         const encodedTransactionCode = encodeURIComponent(transactionCode);
         const dynamicQrUrl = `https://img.vietqr.io/image/${BANK_ID}-${ACCOUNT_NO}-compact2.jpg?amount=${remaining}&addInfo=${encodedTransactionCode}&accountName=${encodedAccountName}`;
-        const response = await fetch(dynamicQrUrl);
+
+        console.log("\n================ [DEBUG BẮT ĐẦU] ================");
+        console.log("🔗 LINK TẢI QR:", dynamicQrUrl);
+
+        // NHÚNG HEADERS ĐỂ VƯỢT MẶT CLOUDFLARE TRÊN VPS
+        const response = await fetch(dynamicQrUrl, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+                'Accept': 'image/webp,image/apng,image/*,*/*;q=0.8'
+            }
+        });
+
+        console.log("📡 HTTP STATUS:", response.status, response.statusText);
+        console.log("📦 CONTENT-TYPE:", response.headers.get('content-type'));
+
         const arrayBuffer = await response.arrayBuffer();
         const buffer = Buffer.from(arrayBuffer);
+        console.log("⚖️ KÍCH THƯỚC BUFFER (DỮ LIỆU KÉO VỀ):", buffer.length, "bytes");
+
+        // Nếu file dưới 1000 bytes hoặc ko phải ảnh, chắc chắn tải xịt
+        if (buffer.length < 1000 || !response.headers.get('content-type').includes('image')) {
+            const errorText = buffer.toString('utf-8');
+            console.log("🚨 NỘI DUNG LỖI TRẢ VỀ TỪ VIETQR:\n", errorText.substring(0, 500));
+            throw new Error(`Dữ liệu tải về đéo phải ảnh (Kích thước: ${buffer.length} bytes). Chắc chắn VPS bị Cloudflare chặn. Đọc log Coolify liền bro!`);
+        }
+
         const tempFilePath = `./data/qr_test_${userId}.jpg`;
         fs.writeFileSync(tempFilePath, buffer);
+        
+        const stats = fs.statSync(tempFilePath);
+        console.log("💾 KÍCH THƯỚC FILE SAU KHI LƯU Ổ CỨNG:", stats.size, "bytes");
+
+        console.log("🚀 ĐANG BẮN ẢNH SANG TELEGRAM...");
         await bot.sendPhoto(userId, tempFilePath);
+        console.log("✅ BẮN ẢNH THÀNH CÔNG!");
+        console.log("================ [DEBUG KẾT THÚC] ================\n");
+
         if (fs.existsSync(tempFilePath)) {
             fs.unlinkSync(tempFilePath);
         }
-        let msgText = `[BẢN TEST] 🔔 QUÉT MÃ QR TRÊN ĐỂ THANH TOÁN, HOẶC COPY THÔNG TIN DƯỚI ĐÂY 👇\n(Thanh toán premium tháng ${monthStr} / ${yearStr}) - (LƯU Ý: BẮT BUỘC PHẢI CHUYỂN ĐÚNG THÔNG TIN NHƯ Ở DƯỚI)`;
+
+        let msgText = `[BẢN TEST] 🔔 QUÉT MÃ QR TRÊN ĐỂ THANH TOÁN, HOẶC COPY THÔNG TIN DƯỚI ĐÂY 👇\n(Thanh toán premium tháng ${monthStr} / ${yearStr})`;
 
         await bot.sendMessage(userId, msgText);
         await bot.sendMessage(userId, "Ngân hàng: Ngân Hàng Quân Đội MBBank");
@@ -559,13 +588,12 @@ bot.onText(/\/test/, async (msg) => {
         await bot.sendMessage(userId, `Số tiền (Đồng): 👇`);
         await bot.sendMessage(userId, `${remaining}`);
         
-        bot.sendMessage(userId, "✅ Gửi Test thành công mĩ mãn!");
+        bot.sendMessage(userId, "✅ Test gửi QR thành công! Nếu mượt thì ốp y chang vô hàm gửi kia nha sếp!");
     } catch (error) {
-        console.error(`Lỗi gửi test: ${error.message}`);
-        bot.sendMessage(userId, `❌ Lỗi gửi test: ${error.message}`);
+        console.error(`❌ LỖI QUÁ TRÌNH TEST:`, error);
+        bot.sendMessage(userId, `❌ Lỗi tè le: ${error.message}`);
     }
 });
-
 cron.schedule('0 9 * * *', async () => {
     try {
         const result = await db.get("SELECT value FROM config WHERE key = 'payment_day'");
