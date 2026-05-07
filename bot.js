@@ -208,14 +208,19 @@ async function sendBillToPendingUsers() {
 
         const dynamicQrUrl = `https://img.vietqr.io/image/${BANK_ID}-${ACCOUNT_NO}-compact2.jpg?amount=${remaining}&addInfo=${transactionCode}&accountName=${ACCOUNT_NAME}`;
 
-        try {
+try {
             const encodedAccountName = encodeURIComponent(ACCOUNT_NAME);
             const encodedTransactionCode = encodeURIComponent(transactionCode);
             const dynamicQrUrl = `https://img.vietqr.io/image/${BANK_ID}-${ACCOUNT_NO}-compact2.jpg?amount=${remaining}&addInfo=${encodedTransactionCode}&accountName=${encodedAccountName}`;
+            
+  
             const response = await fetch(dynamicQrUrl);
             const arrayBuffer = await response.arrayBuffer();
             const imageBuffer = Buffer.from(arrayBuffer);
-            await bot.sendPhoto(user.id, dynamicQrUrl);
+            
+       
+            await bot.sendPhoto(user.id, imageBuffer, {}, { filename: 'qr.jpg', contentType: 'image/jpeg' });
+            
             let msg = `🔔 QUÉT MÃ QR TRÊN ĐỂ THANH TOÁN, HOẶC COPY THÔNG TIN DƯỚI ĐÂY 👇\n(Thanh toán premium tháng ${monthStr} / ${yearStr}) - (LƯU Ý: BẮT BUỘC PHẢI CHUYỂN ĐÚNG THÔNG TIN NHƯ Ở DƯỚI)`;
             
             if (paidSoFar > 0) {
@@ -232,6 +237,8 @@ async function sendBillToPendingUsers() {
             await bot.sendMessage(user.id, `${remaining}`);
         } catch (error) {
             console.error(`Lỗi gửi cho ${user.name}: ${error.message}`);
+      
+            bot.sendMessage(ADMIN_ID, `❌ Lỗi gửi bill cho ${user.name}: ${error.message}`);
         }
         await new Promise(r => setTimeout(r, 1000));
     }
@@ -275,7 +282,7 @@ async function sendDailyReportToAdmin() {
         console.error("Lỗi gửi báo cáo:", e);
     }
 }
-
+MCASelector
 async function broadcastMessage(messageContent) {
     const users = await db.all("SELECT * FROM users WHERE status = 'active'");
     let count = 0;
@@ -506,6 +513,60 @@ bot.onText(/\/help/, (msg) => {
 /huy : Hủy đăng ký
 /id : Xem ID
 /help : Xem trợ giúp`);
+    }
+});
+
+bot.onText(/\/test/, async (msg) => {
+    const userId = String(msg.chat.id);
+    
+    
+    if (userId !== ADMIN_ID) return;
+
+    bot.sendMessage(userId, "🛠️ Đang giả lập quá trình gửi bill test cho Admin...");
+
+    const cleanMonthKey = getCleanMonthKey();
+    const d = new Date();
+    const monthStr = String(d.getMonth() + 1).padStart(2, '0');
+    const yearStr = d.getFullYear();
+
+    try {
+     
+        const configAmt = await db.get("SELECT value FROM config WHERE key = 'amount'");
+        const currentAmount = configAmt ? configAmt.value : (process.env.DEFAULT_AMOUNT || '30000');
+        const remaining = parseInt(currentAmount);
+
+        
+        const transactionCode = `YTPF${cleanMonthKey}TEST`;
+
+       
+        const encodedAccountName = encodeURIComponent(ACCOUNT_NAME);
+        const encodedTransactionCode = encodeURIComponent(transactionCode);
+        const dynamicQrUrl = `https://img.vietqr.io/image/${BANK_ID}-${ACCOUNT_NO}-compact2.jpg?amount=${remaining}&addInfo=${encodedTransactionCode}&accountName=${encodedAccountName}`;
+
+        
+        const response = await fetch(dynamicQrUrl);
+        const arrayBuffer = await response.arrayBuffer();
+        const imageBuffer = Buffer.from(arrayBuffer);
+
+     
+        await bot.sendPhoto(userId, imageBuffer, {}, { filename: 'qr.jpg', contentType: 'image/jpeg' });
+
+   
+        let msgText = `[BẢN TEST] 🔔 QUÉT MÃ QR TRÊN ĐỂ THANH TOÁN, HOẶC COPY THÔNG TIN DƯỚI ĐÂY 👇\n(Thanh toán premium tháng ${monthStr} / ${yearStr}) - (LƯU Ý: BẮT BUỘC PHẢI CHUYỂN ĐÚNG THÔNG TIN NHƯ Ở DƯỚI)`;
+
+        await bot.sendMessage(userId, msgText);
+        await bot.sendMessage(userId, "Ngân hàng: Ngân Hàng Quân Đội MBBank");
+        await bot.sendMessage(userId, "Số tài khoản: 👇");
+        await bot.sendMessage(userId, `${ACCOUNT_NO}`);
+        await bot.sendMessage(userId, "Nội dung: 👇");
+        await bot.sendMessage(userId, `${transactionCode}`);
+        await bot.sendMessage(userId, `Số tiền (Đồng): 👇`);
+        await bot.sendMessage(userId, `${remaining}`);
+
+        bot.sendMessage(userId, "✅ Test luồng gửi bill mượt mà rồi nha sếp!");
+    } catch (error) {
+        console.error("Lỗi test:", error);
+        bot.sendMessage(userId, `❌ Lỗi cmnr bro: ${error.message}`);
     }
 });
 
