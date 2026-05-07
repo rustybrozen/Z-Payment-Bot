@@ -207,19 +207,16 @@ async function sendBillToPendingUsers() {
         await db.run("UPDATE payments SET transaction_code = ? WHERE user_id = ? AND month_key = ?", [transactionCode, user.id, monthKey]);
 
         const dynamicQrUrl = `https://img.vietqr.io/image/${BANK_ID}-${ACCOUNT_NO}-compact2.jpg?amount=${remaining}&addInfo=${transactionCode}&accountName=${ACCOUNT_NAME}`;
-
 try {
+         
             const encodedAccountName = encodeURIComponent(ACCOUNT_NAME);
             const encodedTransactionCode = encodeURIComponent(transactionCode);
-            const dynamicQrUrl = `https://img.vietqr.io/image/${BANK_ID}-${ACCOUNT_NO}-compact2.jpg?amount=${remaining}&addInfo=${encodedTransactionCode}&accountName=${encodedAccountName}`;
-            
-  
-            const response = await fetch(dynamicQrUrl);
-            const arrayBuffer = await response.arrayBuffer();
-            const imageBuffer = Buffer.from(arrayBuffer);
             
        
-            await bot.sendPhoto(user.id, imageBuffer, {}, { filename: 'qr.jpg', contentType: 'image/jpeg' });
+            const dynamicQrUrl = `https://img.vietqr.io/image/${BANK_ID}-${ACCOUNT_NO}-compact2.jpg?amount=${remaining}&addInfo=${encodedTransactionCode}&accountName=${encodedAccountName}`;
+            
+           
+            await bot.sendPhoto(user.id, dynamicQrUrl);
             
             let msg = `🔔 QUÉT MÃ QR TRÊN ĐỂ THANH TOÁN, HOẶC COPY THÔNG TIN DƯỚI ĐÂY 👇\n(Thanh toán premium tháng ${monthStr} / ${yearStr}) - (LƯU Ý: BẮT BUỘC PHẢI CHUYỂN ĐÚNG THÔNG TIN NHƯ Ở DƯỚI)`;
             
@@ -235,6 +232,7 @@ try {
             await bot.sendMessage(user.id, `${transactionCode}`);
             await bot.sendMessage(user.id, `Số tiền (Đồng): 👇`);
             await bot.sendMessage(user.id, `${remaining}`);
+            
         } catch (error) {
             console.error(`Lỗi gửi cho ${user.name}: ${error.message}`);
       
@@ -496,6 +494,7 @@ bot.onText(/\/help/, (msg) => {
     const userId = String(msg.chat.id);
     if (userId === ADMIN_ID) {
         bot.sendMessage(userId, `🛠️ MENU ADMIN:
+/test: Test gửi QR cho Admin
 /xacnhan <ID> : Duyệt User
 /huy <ID> : Xóa thành viên
 /tinhtrang : Xem báo cáo chi tiết
@@ -520,7 +519,7 @@ bot.onText(/\/test/, async (msg) => {
     const userId = String(msg.chat.id);
     if (userId !== ADMIN_ID) return;
 
-    bot.sendMessage(userId, "🛠️ Đang test bắn link QR trực tiếp qua Zapps proxy...");
+    bot.sendMessage(userId, "🛠️ Đang test bắn link QR trực tiếp...");
 
     const cleanMonthKey = getCleanMonthKey();
     const d = new Date();
@@ -534,19 +533,19 @@ bot.onText(/\/test/, async (msg) => {
         
         const transactionCode = `YTPF${cleanMonthKey}TEST`;
 
-        // 1. Chỉ cần Encode siêu chuẩn 2 cái biến này là đủ
+   
         const encodedAccountName = encodeURIComponent(ACCOUNT_NAME);
         const encodedTransactionCode = encodeURIComponent(transactionCode);
         
-        // 2. Tạo Link xịn
+   
         const dynamicQrUrl = `https://img.vietqr.io/image/${BANK_ID}-${ACCOUNT_NO}-compact2.jpg?amount=${remaining}&addInfo=${encodedTransactionCode}&accountName=${encodedAccountName}`;
 
         console.log("👉 Đang ném link này cho Zapps:", dynamicQrUrl);
 
-        // 3. QUAN TRỌNG: Quăng thẳng cái link vô cho bot, dẹp hết Buffer/Stream!
+      
         await bot.sendPhoto(userId, dynamicQrUrl);
 
-        // 4. Gửi đống tin nhắn kèm theo
+     
         let msgText = `[BẢN TEST] 🔔 QUÉT MÃ QR TRÊN ĐỂ THANH TOÁN 👇\n(Thanh toán premium tháng ${monthStr} / ${yearStr})`;
         await bot.sendMessage(userId, msgText);
         await bot.sendMessage(userId, "Ngân hàng: Ngân Hàng Quân Đội MBBank");
@@ -557,7 +556,7 @@ bot.onText(/\/test/, async (msg) => {
         await bot.sendMessage(userId, `Số tiền (Đồng): 👇`);
         await bot.sendMessage(userId, `${remaining}`);
         
-        bot.sendMessage(userId, "✅ Test thành công mĩ mãn! Code ngắn gọn súc tích vl!");
+        bot.sendMessage(userId, "✅ Test thành công !");
     } catch (error) {
         console.error("❌ Lỗi test:", error);
         bot.sendMessage(userId, `❌ Lỗi tè le: ${error.message}`);
