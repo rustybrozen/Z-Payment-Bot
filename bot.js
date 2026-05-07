@@ -209,6 +209,12 @@ async function sendBillToPendingUsers() {
         const dynamicQrUrl = `https://img.vietqr.io/image/${BANK_ID}-${ACCOUNT_NO}-compact2.jpg?amount=${remaining}&addInfo=${transactionCode}&accountName=${ACCOUNT_NAME}`;
 
         try {
+            const encodedAccountName = encodeURIComponent(ACCOUNT_NAME);
+            const encodedTransactionCode = encodeURIComponent(transactionCode);
+            const dynamicQrUrl = `https://img.vietqr.io/image/${BANK_ID}-${ACCOUNT_NO}-compact2.jpg?amount=${remaining}&addInfo=${encodedTransactionCode}&accountName=${encodedAccountName}`;
+            const response = await fetch(dynamicQrUrl);
+            const arrayBuffer = await response.arrayBuffer();
+            const imageBuffer = Buffer.from(arrayBuffer);
             await bot.sendPhoto(user.id, dynamicQrUrl);
             let msg = `🔔 QUÉT MÃ QR TRÊN ĐỂ THANH TOÁN, HOẶC COPY THÔNG TIN DƯỚI ĐÂY 👇\n(Thanh toán premium tháng ${monthStr} / ${yearStr}) - (LƯU Ý: BẮT BUỘC PHẢI CHUYỂN ĐÚNG THÔNG TIN NHƯ Ở DƯỚI)`;
             
