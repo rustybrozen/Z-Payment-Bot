@@ -529,45 +529,49 @@ bot.onText(/\/test/, async (msg) => {
     const monthStr = String(d.getMonth() + 1).padStart(2, '0');
     const yearStr = d.getFullYear();
 
-    try {
-     
-        const configAmt = await db.get("SELECT value FROM config WHERE key = 'amount'");
-        const currentAmount = configAmt ? configAmt.value : (process.env.DEFAULT_AMOUNT || '30000');
-        const remaining = parseInt(currentAmount);
+   try {
+            const encodedAccountName = encodeURIComponent(ACCOUNT_NAME);
+            const encodedTransactionCode = encodeURIComponent(transactionCode);
+            const dynamicQrUrl = `https://img.vietqr.io/image/${BANK_ID}-${ACCOUNT_NO}-compact2.jpg?amount=${remaining}&addInfo=${encodedTransactionCode}&accountName=${encodedAccountName}`;
 
-        
-        const transactionCode = `YTPF${cleanMonthKey}TEST`;
+            // Bước 1: Fetch ảnh về thành dạng Buffer
+            const response = await fetch(dynamicQrUrl);
+            const arrayBuffer = await response.arrayBuffer();
+            const buffer = Buffer.from(arrayBuffer);
 
-       
-        const encodedAccountName = encodeURIComponent(ACCOUNT_NAME);
-        const encodedTransactionCode = encodeURIComponent(transactionCode);
-        const dynamicQrUrl = `https://img.vietqr.io/image/${BANK_ID}-${ACCOUNT_NO}-compact2.jpg?amount=${remaining}&addInfo=${encodedTransactionCode}&accountName=${encodedAccountName}`;
+            // Bước 2: Lưu tạm ra ổ cứng (ví dụ ném vào thư mục data cho gọn)
+            const tempFilePath = `./data/qr_${user.id}.jpg`;
+            fs.writeFileSync(tempFilePath, buffer);
 
-        
-        const response = await fetch(dynamicQrUrl);
-        const arrayBuffer = await response.arrayBuffer();
-        const imageBuffer = Buffer.from(arrayBuffer);
+            // Bước 3: Gửi file lên Telegram từ đường dẫn vật lý (Cách này auto thành công)
+            await bot.sendPhoto(user.id, tempFilePath);
 
-     
-        await bot.sendPhoto(userId, imageBuffer, {}, { filename: 'qr.jpg', contentType: 'image/jpeg' });
+            // Bước 4: Gửi xong thì dọn rác, xóa file đi cho nhẹ server
+            if (fs.existsSync(tempFilePath)) {
+                fs.unlinkSync(tempFilePath);
+            }
 
-   
-        let msgText = `[BẢN TEST] 🔔 QUÉT MÃ QR TRÊN ĐỂ THANH TOÁN, HOẶC COPY THÔNG TIN DƯỚI ĐÂY 👇\n(Thanh toán premium tháng ${monthStr} / ${yearStr}) - (LƯU Ý: BẮT BUỘC PHẢI CHUYỂN ĐÚNG THÔNG TIN NHƯ Ở DƯỚI)`;
+            // Gửi tin nhắn text đính kèm
+            let msg = `🔔 QUÉT MÃ QR TRÊN ĐỂ THANH TOÁN, HOẶC COPY THÔNG TIN DƯỚI ĐÂY 👇\n(Thanh toán premium tháng ${monthStr} / ${yearStr}) - (LƯU Ý: BẮT BUỘC PHẢI CHUYỂN ĐÚNG THÔNG TIN NHƯ Ở DƯỚI)`;
+            
+            if (paidSoFar > 0) {
+                msg += `\n\nℹ️ Bạn đã đóng trước: ${paidSoFar}đ\n🔴 Số tiền còn lại phải đóng: ${remaining}đ`;
+            }
 
-        await bot.sendMessage(userId, msgText);
-        await bot.sendMessage(userId, "Ngân hàng: Ngân Hàng Quân Đội MBBank");
-        await bot.sendMessage(userId, "Số tài khoản: 👇");
-        await bot.sendMessage(userId, `${ACCOUNT_NO}`);
-        await bot.sendMessage(userId, "Nội dung: 👇");
-        await bot.sendMessage(userId, `${transactionCode}`);
-        await bot.sendMessage(userId, `Số tiền (Đồng): 👇`);
-        await bot.sendMessage(userId, `${remaining}`);
-
-        bot.sendMessage(userId, "✅ Test luồng gửi bill mượt mà rồi nha sếp!");
-    } catch (error) {
-        console.error("Lỗi test:", error);
-        bot.sendMessage(userId, `❌ Lỗi cmnr bro: ${error.message}`);
-    }
+            await bot.sendMessage(user.id, msg);
+            await bot.sendMessage(user.id, "Ngân hàng: Ngân Hàng Quân Đội MBBank");
+            await bot.sendMessage(user.id, "Số tài khoản: 👇");
+            await bot.sendMessage(user.id, `${ACCOUNT_NO}`);
+            await bot.sendMessage(user.id, "Nội dung: 👇");
+            await bot.sendMessage(user.id, `${transactionCode}`);
+            await bot.sendMessage(user.id, `Số tiền (Đồng): 👇`);
+            await bot.sendMessage(user.id, `${remaining}`);
+            
+        } catch (error) {
+            console.error(`Lỗi gửi cho ${user.name}: ${error.message}`);
+            // Báo log cho Admin để dễ quản lý
+            bot.sendMessage(ADMIN_ID, `❌ Lỗi gửi bill cho ${user.name}: ${error.message}`);
+        }
 });
 
 cron.schedule('0 9 * * *', async () => {
