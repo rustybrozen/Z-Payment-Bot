@@ -282,7 +282,7 @@ async function sendDailyReportToAdmin() {
         console.error("Lỗi gửi báo cáo:", e);
     }
 }
-MCASelector
+
 async function broadcastMessage(messageContent) {
     const users = await db.all("SELECT * FROM users WHERE status = 'active'");
     let count = 0;
