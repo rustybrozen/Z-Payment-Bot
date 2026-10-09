@@ -105,6 +105,22 @@ app.post(WEBHOOK_PATH, (req, res) => {
     res.sendStatus(200);
 });
 
+async function resolveActiveUser(targetInput) {
+    const cleanInput = String(targetInput).trim();
+    const indexNum = parseInt(cleanInput, 10);
+
+    const activeUsers = await db.all(
+        "SELECT id, name FROM users WHERE status = 'active' ORDER BY joined_at ASC, id ASC"
+    );
+
+    if (!isNaN(indexNum) && String(indexNum) === cleanInput && indexNum >= 1 && indexNum <= activeUsers.length) {
+        return activeUsers[indexNum - 1];
+    }
+
+    const directUser = await db.get("SELECT id, name FROM users WHERE id = ?", [cleanInput]);
+    return directUser || null;
+}
+
 async function checkCompletionAndNotify(monthKey) {
     try {
         const totalActive = await db.get("SELECT count(*) as count FROM users WHERE status = 'active'");
@@ -213,6 +229,7 @@ async function sendBillToPendingUsers() {
         FROM users u 
         JOIN payments p ON u.id = p.user_id 
         WHERE p.month_key = ? AND p.status = 'unpaid' AND u.status = 'active'
+        ORDER BY u.joined_at ASC, u.id ASC
     `, [monthKey]);
 
     if (unpaidUsers.length === 0) {
@@ -273,8 +290,9 @@ async function sendDailyReportToAdmin() {
         const list = await db.all(`
             SELECT u.name, u.id, p.status, p.amount_paid 
             FROM users u 
-            LEFT JOIN payments p ON u.id = p.user_id 
-            WHERE u.status = 'active' AND p.month_key = ?
+            LEFT JOIN payments p ON u.id = p.user_id AND p.month_key = ?
+            WHERE u.status = 'active'
+            ORDER BY u.joined_at ASC, u.id ASC
         `, [monthKey]);
 
         let paidCount = 0;
@@ -284,7 +302,7 @@ async function sendDailyReportToAdmin() {
             const isPaid = row.status === 'paid';
             if (isPaid) paidCount++;
             const statusText = isPaid ? "Đã nộp" : `Chưa nộp (Đã nộp: ${row.amount_paid || 0}đ)`;
-            details += `${index + 1}. ${row.name}\n   ID: ${row.id}\n   Tình trạng: ${statusText}\n\n`;
+            details += `[${index + 1}] ${row.name}\n    ID: ${row.id}\n    Tình trạng: ${statusText}\n\n`;
         });
 
         if (paidCount === list.length && list.length > 0) {
@@ -344,26 +362,26 @@ bot.onText(/\/dangky(.*)/, async (msg, match) => {
 
 bot.onText(/\/huy(?:\s+(.+))?/, async (msg, match) => {
     const userId = String(msg.chat.id);
-    const targetId = match[1] ? match[1].trim() : null;
+    const targetInput = match[1] ? match[1].trim() : null;
 
-    if (userId === ADMIN_ID && targetId) {
+    if (userId === ADMIN_ID && targetInput) {
         try {
-            const user = await db.get('SELECT * FROM users WHERE id = ?', [targetId]);
+            const user = await resolveActiveUser(targetInput);
             if (!user) {
-                bot.sendMessage(ADMIN_ID, `Không tìm thấy User ID: ${targetId}`);
+                bot.sendMessage(ADMIN_ID, `Không tìm thấy thành viên với STT/ID: ${targetInput}`);
                 return;
             }
-            await db.run('DELETE FROM users WHERE id = ?', [targetId]);
-            await db.run('DELETE FROM payments WHERE user_id = ?', [targetId]);
-            bot.sendMessage(ADMIN_ID, `Đã xóa thành công thành viên: ${user.name} (${targetId})`);
+            await db.run('DELETE FROM users WHERE id = ?', [user.id]);
+            await db.run('DELETE FROM payments WHERE user_id = ?', [user.id]);
+            bot.sendMessage(ADMIN_ID, `Đã xóa thành công thành viên: ${user.name} (${user.id})`);
         } catch (e) {
             bot.sendMessage(ADMIN_ID, "Lỗi database.");
         }
         return;
     }
 
-    if (userId === ADMIN_ID && !targetId) {
-        bot.sendMessage(ADMIN_ID, "Admin dùng lệnh: /huy <ID người dùng> để xóa thành viên.");
+    if (userId === ADMIN_ID && !targetInput) {
+        bot.sendMessage(ADMIN_ID, "Admin dùng lệnh: /huy <STT hoặc ID> để xóa thành viên.");
         return;
     }
 
@@ -405,16 +423,22 @@ bot.onText(/\/tinhtrang/, async (msg) => {
 
 bot.onText(/\/dathanhtoan (.+)/, async (msg, match) => {
     if (String(msg.chat.id) !== ADMIN_ID) return;
-    const targetId = match[1].trim();
+    const targetInput = match[1].trim();
     const monthKey = getCurrentMonthKey();
 
     try {
+        const user = await resolveActiveUser(targetInput);
+        if (!user) {
+            bot.sendMessage(ADMIN_ID, `Không tìm thấy thành viên với STT/ID: ${targetInput}`);
+            return;
+        }
+
         const configAmt = await db.get("SELECT value FROM config WHERE key = 'amount'");
         const currentAmount = configAmt ? configAmt.value : '30000';
 
-        await db.run("INSERT OR REPLACE INTO payments (user_id, month_key, status, amount_paid) VALUES (?, ?, 'paid', ?)", [targetId, monthKey, currentAmount]);
-        bot.sendMessage(ADMIN_ID, `Đã set thủ công trạng thái ĐÃ ĐÓNG cho ID: ${targetId}`);
-        bot.sendMessage(targetId, `Admin xác nhận bạn đã đóng tiền tháng ${monthKey}.`);
+        await db.run("INSERT OR REPLACE INTO payments (user_id, month_key, status, amount_paid) VALUES (?, ?, 'paid', ?)", [user.id, monthKey, currentAmount]);
+        bot.sendMessage(ADMIN_ID, `Đã set thủ công trạng thái ĐÃ ĐÓNG cho [${user.name}] (ID: ${user.id})`);
+        bot.sendMessage(user.id, `Admin xác nhận bạn đã đóng tiền tháng ${monthKey}.`);
         await checkCompletionAndNotify(monthKey);
     } catch (e) {
         bot.sendMessage(ADMIN_ID, "Lỗi database.");
@@ -494,14 +518,20 @@ bot.onText(/\/thongbao (.+)/, async (msg, match) => {
 
 bot.onText(/\/nhantin (\S+) (.+)/, async (msg, match) => {
     if (String(msg.chat.id) !== ADMIN_ID) return;
-    const targetUserId = match[1].trim();
+    const targetInput = match[1].trim();
     const messageContent = match[2].trim();
 
     try {
-        await bot.sendMessage(targetUserId, `ADMIN NHẮN:\n${messageContent}`);
-        bot.sendMessage(ADMIN_ID, `Đã gửi tin nhắn cho user ${targetUserId}`);
+        const user = await resolveActiveUser(targetInput);
+        if (!user) {
+            bot.sendMessage(ADMIN_ID, `Không tìm thấy thành viên với STT/ID: ${targetInput}`);
+            return;
+        }
+
+        await bot.sendMessage(user.id, `ADMIN NHẮN:\n${messageContent}`);
+        bot.sendMessage(ADMIN_ID, `Đã gửi tin nhắn cho [${user.name}] (ID: ${user.id})`);
     } catch (e) {
-        bot.sendMessage(ADMIN_ID, `Lỗi: Không thể gửi tin cho ${targetUserId}.`);
+        bot.sendMessage(ADMIN_ID, `Lỗi: Không thể gửi tin cho user ${targetInput}.`);
     }
 });
 
@@ -515,10 +545,10 @@ bot.onText(/\/help/, (msg) => {
         bot.sendMessage(userId, `MENU ADMIN:
 /test: Test gửi QR cho Admin
 /xacnhan <ID> : Duyệt User
-/huy <ID> : Xóa thành viên
-/tinhtrang : Xem báo cáo chi tiết
-/dathanhtoan <ID> : Set đã đóng tay
-/nhantin <ID> <ND> : Nhắn riêng
+/huy <STT hoặc ID> : Xóa thành viên
+/tinhtrang : Xem báo cáo chi tiết kèm STT [1], [2]...
+/dathanhtoan <STT hoặc ID> : Set đã đóng tay
+/nhantin <STT hoặc ID> <ND> : Nhắn riêng
 /skipthangnay : Miễn phí tháng này
 /settien <số tiền> : Chỉnh tiền
 /config : Xem cấu hình
